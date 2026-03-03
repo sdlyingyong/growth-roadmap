@@ -680,7 +680,7 @@ export default function App() {
                     </p>
                   </div>
 
-                  <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100">
+                  <div className="absolute top-4 right-4 flex gap-2">
                     <button 
                       onClick={() => {
                         setEditingDecision(decision);
@@ -688,13 +688,13 @@ export default function App() {
                         setTenYearView(decision.tenYearView);
                         setIsAddingDecision(true);
                       }}
-                      className="text-stone-700 hover:text-amber-400 transition-colors"
+                      className="text-stone-700 hover:text-amber-400 transition-colors p-1"
                     >
                       <Edit3 size={16} />
                     </button>
                     <button 
                       onClick={() => setDecisions(decisions.filter(d => d.id !== decision.id))}
-                      className="text-stone-700 hover:text-red-400 transition-colors"
+                      className="text-stone-700 hover:text-red-400 transition-colors p-1"
                     >
                       <Trash2 size={16} />
                     </button>
