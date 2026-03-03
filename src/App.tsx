@@ -727,6 +727,7 @@ export default function App() {
                     initial={{ opacity: 0, scale: 0.9, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                    onClick={(e) => e.stopPropagation()}
                     className="relative w-full max-w-md bg-stone-900 border border-stone-800 rounded-3xl p-6 shadow-2xl space-y-6"
                   >
                     <div className="flex items-center justify-between">
@@ -812,7 +813,10 @@ export default function App() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    onClick={() => setIsAddingDecision(false)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsAddingDecision(false);
+                    }}
                     className="absolute inset-0 bg-stone-950/80 backdrop-blur-sm"
                   />
                   <motion.div 
