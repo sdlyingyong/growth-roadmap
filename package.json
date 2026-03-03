@@ -11,6 +11,7 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "electron": "electron .",
+    "electron-simple": "electron public/electron-simple.js",
     "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
     "electron-build": "npm run build && electron-builder",
     "electron-build-win": "npm run build && electron-builder --win",
