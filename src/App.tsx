@@ -108,34 +108,96 @@ export default function App() {
   const [auditRule, setAuditRule] = useState('');
   const [auditCategory, setAuditCategory] = useState('work');
 
-  // Load from local storage
+  // Load from IndexedDB
   useEffect(() => {
-    const savedItems = localStorage.getItem('nottodo-pyramid-v4');
-    const savedDecisions = localStorage.getItem('nottodo-decisions-v4');
-    if (savedItems) {
-      try {
-        setItems(JSON.parse(savedItems));
-      } catch (e) {
-        console.error('Failed to parse saved items', e);
+    // 初始化 IndexedDB
+    const request = indexedDB.open('NotToDoDB', 1);
+    
+    request.onerror = function() {
+      console.error('Failed to open IndexedDB');
+    };
+    
+    request.onsuccess = function(event: any) {
+      const db = event.target.result;
+      
+      // 加载金字塔数据
+      const itemsTransaction = db.transaction(['pyramid'], 'readonly');
+      const itemsStore = itemsTransaction.objectStore('pyramid');
+      const itemsRequest = itemsStore.getAll();
+      
+      itemsRequest.onsuccess = function() {
+        if (itemsRequest.result && itemsRequest.result.length > 0) {
+          setItems(itemsRequest.result);
+        }
+      };
+      
+      // 加载决策数据
+      const decisionsTransaction = db.transaction(['decisions'], 'readonly');
+      const decisionsStore = decisionsTransaction.objectStore('decisions');
+      const decisionsRequest = decisionsStore.getAll();
+      
+      decisionsRequest.onsuccess = function() {
+        if (decisionsRequest.result && decisionsRequest.result.length > 0) {
+          setDecisions(decisionsRequest.result);
+        }
+      };
+    };
+    
+    request.onupgradeneeded = function(event: any) {
+      const db = event.target.result;
+      
+      // 创建金字塔数据存储
+      if (!db.objectStoreNames.contains('pyramid')) {
+        const pyramidStore = db.createObjectStore('pyramid', { keyPath: 'id' });
+        pyramidStore.createIndex('timestamp', 'timestamp');
       }
-    }
-    if (savedDecisions) {
-      try {
-        setDecisions(JSON.parse(savedDecisions));
-      } catch (e) {
-        console.error('Failed to parse saved decisions', e);
+      
+      // 创建决策数据存储
+      if (!db.objectStoreNames.contains('decisions')) {
+        const decisionsStore = db.createObjectStore('decisions', { keyPath: 'id' });
+        decisionsStore.createIndex('timestamp', 'timestamp');
       }
-    }
+    };
   }, []);
 
-  // Save to local storage
+  // Save to IndexedDB
   useEffect(() => {
-    localStorage.setItem('nottodo-pyramid-v4', JSON.stringify(items));
-  }, [items]);
-
-  useEffect(() => {
-    localStorage.setItem('nottodo-decisions-v4', JSON.stringify(decisions));
-  }, [decisions]);
+    const request = indexedDB.open('NotToDoDB', 1);
+    
+    request.onsuccess = function(event: any) {
+      const db = event.target.result;
+      
+      // 保存金字塔数据
+      if (items.length > 0) {
+        const itemsTransaction = db.transaction(['pyramid'], 'readwrite');
+        const itemsStore = itemsTransaction.objectStore('pyramid');
+        
+        // 清除现有数据
+        const clearRequest = itemsStore.clear();
+        clearRequest.onsuccess = function() {
+          // 添加新数据
+          items.forEach(item => {
+            itemsStore.add(item);
+          });
+        };
+      }
+      
+      // 保存决策数据
+      if (decisions.length > 0) {
+        const decisionsTransaction = db.transaction(['decisions'], 'readwrite');
+        const decisionsStore = decisionsTransaction.objectStore('decisions');
+        
+        // 清除现有数据
+        const clearRequest = decisionsStore.clear();
+        clearRequest.onsuccess = function() {
+          // 添加新数据
+          decisions.forEach(decision => {
+            decisionsStore.add(decision);
+          });
+        };
+      }
+    };
+  }, [items, decisions]);
 
   const addItem = (text: string, cat: string, refl: string) => {
     const newItem: NotToDoItem = {
@@ -147,6 +209,14 @@ export default function App() {
       logs: [],
     };
     setItems([...items, newItem]);
+  };
+
+  const updateItem = (id: string, text: string, cat: string, refl: string) => {
+    setItems(items.map(item => 
+      item.id === id 
+        ? { ...item, text: text.trim(), category: cat, reflection: refl.trim() }
+        : item
+    ));
   };
 
   const addDecision = (content: string, view: string) => {
@@ -302,6 +372,88 @@ export default function App() {
         }
       } catch (err) {
         alert('解析 Markdown 失败');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const exportData = () => {
+    const request = indexedDB.open('NotToDoDB', 1);
+    
+    request.onsuccess = function(event: any) {
+      const db = event.target.result;
+      
+      // 导出金字塔数据
+      const itemsTransaction = db.transaction(['pyramid'], 'readonly');
+      const itemsStore = itemsTransaction.objectStore('pyramid');
+      const itemsRequest = itemsStore.getAll();
+      
+      // 导出决策数据
+      const decisionsTransaction = db.transaction(['decisions'], 'readonly');
+      const decisionsStore = decisionsTransaction.objectStore('decisions');
+      const decisionsRequest = decisionsStore.getAll();
+      
+      Promise.all([itemsRequest, decisionsRequest]).then(() => {
+        const data = {
+          items: itemsRequest.result || [],
+          decisions: decisionsRequest.result || [],
+          exportDate: new Date().toISOString()
+        };
+        
+        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `notodo-backup-${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    };
+  };
+
+  const importData = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const data = JSON.parse(e.target?.result as string);
+        
+        const request = indexedDB.open('NotToDoDB', 1);
+        
+        request.onsuccess = function(event: any) {
+          const db = event.target.result;
+          
+          // 导入金字塔数据
+          if (data.items && data.items.length > 0) {
+            const itemsTransaction = db.transaction(['pyramid'], 'readwrite');
+            const itemsStore = itemsTransaction.objectStore('pyramid');
+            
+            // 清除现有数据
+            const clearRequest = itemsStore.clear();
+            clearRequest.onsuccess = function() {
+              // 添加新数据
+              data.items.forEach((item: NotToDoItem) => {
+                itemsStore.add(item);
+              });
+            };
+          }
+          
+          // 导入决策数据
+          if (data.decisions && data.decisions.length > 0) {
+            const decisionsTransaction = db.transaction(['decisions'], 'readwrite');
+            const decisionsStore = decisionsTransaction.objectStore('decisions');
+            
+            // 清除现有数据
+            const clearRequest = decisionsStore.clear();
+            clearRequest.onsuccess = function() {
+              // 添加新数据
+              data.decisions.forEach((decision: DecisionItem) => {
+                decisionsStore.add(decision);
+              });
+            };
+          }
+        };
+      } catch (error) {
+        console.error('导入失败:', error);
       }
     };
     reader.readAsText(file);
@@ -1172,27 +1324,29 @@ export default function App() {
                 </div>
 
                 <div className="p-4 bg-stone-800/50 rounded-2xl border border-stone-700">
-                  <p className="text-xs text-stone-500 font-bold uppercase tracking-widest mb-4">{lang === 'zh' ? 'Markdown 笔记管理' : 'Markdown Note Management'}</p>
+                  <p className="text-xs text-stone-500 font-bold uppercase tracking-widest mb-4">{lang === 'zh' ? '数据管理' : 'Data Management'}</p>
                   <div className="grid grid-cols-2 gap-3">
                     <button 
-                      onClick={exportMarkdown}
+                      onClick={exportData}
                       className="flex flex-col items-center justify-center gap-2 p-4 rounded-xl bg-stone-800 hover:bg-stone-700 transition-colors border border-stone-700 group"
                     >
                       <FileText className="text-amber-500 group-hover:scale-110 transition-transform" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider">{lang === 'zh' ? '导出笔记' : 'Export Notes'}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider">{lang === 'zh' ? '导出数据' : 'Export Data'}</span>
                     </button>
                     <label className="flex flex-col items-center justify-center gap-2 p-4 rounded-xl bg-stone-800 hover:bg-stone-700 transition-colors border border-stone-700 group cursor-pointer">
                       <Upload className="text-amber-500 group-hover:scale-110 transition-transform" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider">{lang === 'zh' ? '导入笔记' : 'Import Notes'}</span>
-                      <input type="file" accept=".md" onChange={importMarkdown} className="hidden" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider">{lang === 'zh' ? '导入数据' : 'Import Data'}</span>
+                      <input type="file" accept=".json" onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) importData(file);
+                      }} className="hidden" />
                     </label>
                   </div>
                 </div>
 
                 <div className="text-center">
                   <p className="text-[10px] text-stone-600 leading-relaxed">
-                    Markdown 格式适用于在 Notion、Obsidian 等笔记软件中查看，<br/>
-                    同时也支持通过导入 Markdown 文件来恢复您的金字塔数据。
+                    {lang === 'zh' ? '数据存储在浏览器 IndexedDB 中，无需手动备份。更换设备时，请使用导出功能保存数据。' : 'Data is stored in browser IndexedDB, no manual backup needed. Use export function to save data when switching devices.'}
                   </p>
                 </div>
               </div>
